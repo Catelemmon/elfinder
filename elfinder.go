@@ -87,7 +87,7 @@ func (elf *ElFinderConnector) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	switch req.Method {
 	case "GET":
 		if err := req.ParseForm(); err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			http.Error(rw, err.Error(), http.StatusBadRequest)
 			return
 		}
 
