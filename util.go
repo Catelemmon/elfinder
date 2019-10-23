@@ -3,9 +3,13 @@ package elfinder
 import (
 	"crypto/md5"
 	"encoding/base64"
-	"encoding/hex"
+	"fmt"
 	"os"
+	"strings"
+	"time"
 )
+
+const VolumeIDPrefix = "v"
 
 func Decode64(s string) (string, error) {
 	t, err := base64.RawURLEncoding.DecodeString(s)
@@ -23,10 +27,18 @@ func CreateHash(volumeId, path string) string {
 	return volumeId + "_" + Encode64(path)
 }
 
-func GenerateID(path string) string {
+func GenerateVolumeID() string {
 	ctx := md5.New()
-	ctx.Write([]byte(path))
-	return hex.EncodeToString(ctx.Sum(nil))
+	ctx.Write([]byte(time.Now().String()))
+	return fmt.Sprintf("%s%x", VolumeIDPrefix, ctx.Sum(nil))
+}
+
+func ParseStringToBool(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "on":
+		return true
+	}
+	return false
 }
 
 func ReadWritePem(pem os.FileMode) (readable, writable byte) {
@@ -38,4 +50,3 @@ func ReadWritePem(pem os.FileMode) (readable, writable byte) {
 	}
 	return
 }
-

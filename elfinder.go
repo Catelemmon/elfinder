@@ -15,78 +15,64 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/go-playground/form"
 )
 
-const (
-	APIVERSION    = 2.1050
-	UPLOADMAXSIZE = "10M"
-)
 
-const (
-	defaultZipMaxSize = 1024 * 1024 * 1024 // 1G
-	defaultTmpPath    = "/tmp"
-)
 
 type Volumes []Volume
 
-func NewElFinderConnector(vs Volumes) *ElFinderConnector {
-	var volumeMap = make(map[string]Volume)
-	for _, vol := range vs {
-		volumeMap[vol.ID()] = vol
-	}
-	return &ElFinderConnector{Volumes: volumeMap, defaultV: vs[0], req: &ELFRequest{}, res: &ElfResponse{}}
-}
+//func NewElFinderConnector(vs Volumes) *Connector {
+//	var volumeMap = make(map[string]Volume)
+//	for _, vol := range vs {
+//		volumeMap[vol.ID()] = vol
+//	}
+//	return &Connector{Volumes: volumeMap, defaultV: vs[0], req: &ELFRequest{}, res: &ElfResponse{}}
+//}
+//
+//func NewElFinderConnectorWithOption(vs Volumes, option map[string]string) *Connector {
+//	var volumeMap = make(map[string]Volume)
+//	for _, vol := range vs {
+//		volumeMap[vol.ID()] = vol
+//	}
+//	var zipMaxSize int64
+//	var zipTmpPath string
+//	for k, v := range option {
+//		switch strings.ToLower(k) {
+//		case "zipmaxsize":
+//			if size, err := strconv.Atoi(v); err == nil && size > 0 {
+//				zipMaxSize = int64(size)
+//			}
+//		case "ziptmppath":
+//			if _, err := os.Stat(v); err != nil && os.IsNotExist(err) {
+//				err = os.MkdirAll(v, 0600)
+//				log.Fatal(err)
+//			}
+//			zipTmpPath = v
+//		}
+//	}
+//	if zipMaxSize == 0 {
+//		zipMaxSize = int64(defaultZipMaxSize)
+//	}
+//
+//	if zipTmpPath == "" {
+//		zipTmpPath = defaultTmpPath
+//	}
+//	return &Connector{Volumes: volumeMap, defaultV: vs[0], req: &ELFRequest{}, res: &ElfResponse{},
+//		zipTmpPath: zipTmpPath, zipMaxSize: zipMaxSize}
+//}
 
-func NewElFinderConnectorWithOption(vs Volumes, option map[string]string) *ElFinderConnector {
-	var volumeMap = make(map[string]Volume)
-	for _, vol := range vs {
-		volumeMap[vol.ID()] = vol
-	}
-	var zipMaxSize int64
-	var zipTmpPath string
-	for k, v := range option {
-		switch strings.ToLower(k) {
-		case "zipmaxsize":
-			if size, err := strconv.Atoi(v); err == nil && size > 0 {
-				zipMaxSize = int64(size)
-			}
-		case "ziptmppath":
-			if _, err := os.Stat(v); err != nil && os.IsNotExist(err) {
-				err = os.MkdirAll(v, 0600)
-				log.Fatal(err)
-			}
-			zipTmpPath = v
-		}
-	}
-	if zipMaxSize == 0 {
-		zipMaxSize = int64(defaultZipMaxSize)
-	}
-
-	if zipTmpPath == "" {
-		zipTmpPath = defaultTmpPath
-	}
-	return &ElFinderConnector{Volumes: volumeMap, defaultV: vs[0], req: &ELFRequest{}, res: &ElfResponse{},
-		zipTmpPath: zipTmpPath, zipMaxSize: zipMaxSize}
-}
-
-type ElFinderConnector struct {
+type Connector struct {
 	Volumes  map[string]Volume
 	defaultV Volume
-	req      *ELFRequest
-	res      *ElfResponse
 
-	zipMaxSize int64
-	zipTmpPath string
+	option *Option
 }
 
-func (elf *ElFinderConnector) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (elf *Connector) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	var err error
-	decoder := form.NewDecoder()
 	switch req.Method {
 	case "GET":
-		if err := req.ParseForm(); err != nil {
+		if err = req.ParseForm(); err != nil {
 			http.Error(rw, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -102,14 +88,10 @@ func (elf *ElFinderConnector) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		http.Error(rw, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	err = decoder.Decode(elf.req, req.Form)
-	if err != nil {
-		log.Println(err)
-	}
 	elf.dispatch(rw, req)
 }
 
-func (elf *ElFinderConnector) open() {
+func (elf *Connector) open() {
 	// client: reload, back, forward, home , open
 	// open dir
 	var ret ElfResponse
@@ -156,7 +138,7 @@ func (elf *ElFinderConnector) open() {
 	elf.res = &ret
 }
 
-func (elf *ElFinderConnector) file() (read io.ReadCloser, filename string, err error) {
+func (elf *Connector) file() (read io.ReadCloser, filename string, err error) {
 	IDAndTarget := strings.Split(elf.req.Target, "_")
 	v := elf.getVolume(IDAndTarget[0])
 	path, err := elf.parseTarget(strings.Join(IDAndTarget[1:], "_"))
@@ -168,7 +150,7 @@ func (elf *ElFinderConnector) file() (read io.ReadCloser, filename string, err e
 	return reader, filename, err
 }
 
-func (elf *ElFinderConnector) ls() {
+func (elf *Connector) ls() {
 	var path string
 	elf.res.List = make([]string, 0)
 	IDAndTarget := strings.Split(elf.req.Target, "_")
@@ -199,7 +181,7 @@ func (elf *ElFinderConnector) ls() {
 
 }
 
-func (elf *ElFinderConnector) parents() {
+func (elf *Connector) parents() {
 	IDAndTarget := strings.Split(elf.req.Target, "_")
 	v := elf.getVolume(IDAndTarget[0])
 	path, err := elf.parseTarget(strings.Join(IDAndTarget[1:], "_"))
@@ -210,7 +192,7 @@ func (elf *ElFinderConnector) parents() {
 	elf.res.Tree = v.Parents(path, 0)
 }
 
-func (elf *ElFinderConnector) mkDir() {
+func (elf *Connector) mkDir() {
 	added := make([]FileDir, 0)
 	hashs := make(map[string]string)
 	IDAndTarget := strings.Split(elf.req.Target, "_")
@@ -243,7 +225,7 @@ func (elf *ElFinderConnector) mkDir() {
 	elf.res.Hashes = hashs
 }
 
-func (elf *ElFinderConnector) mkFile() {
+func (elf *Connector) mkFile() {
 	IDAndTarget := strings.Split(elf.req.Target, "_")
 	v := elf.getVolume(IDAndTarget[0])
 	path, err := elf.parseTarget(strings.Join(IDAndTarget[1:], "_"))
@@ -259,7 +241,7 @@ func (elf *ElFinderConnector) mkFile() {
 	elf.res.Added = []FileDir{fileDir}
 }
 
-func (elf *ElFinderConnector) paste() {
+func (elf *Connector) paste() {
 	//cut, copy, paste
 	added := make([]FileDir, 0, len(elf.req.Targets))
 	removed := make([]string, 0, len(elf.req.Targets))
@@ -330,7 +312,7 @@ func (elf *ElFinderConnector) paste() {
 	elf.res.Removed = removed
 }
 
-func (elf *ElFinderConnector) copyFolder(dstPath, srcDir string, dstVol, srcVol Volume) (added []FileDir) {
+func (elf *Connector) copyFolder(dstPath, srcDir string, dstVol, srcVol Volume) (added []FileDir) {
 	srcFiles := srcVol.List(srcDir)
 	added = make([]FileDir, 0, len(srcFiles))
 	for i := 0; i < len(srcFiles); i++ {
@@ -362,11 +344,11 @@ func (elf *ElFinderConnector) copyFolder(dstPath, srcDir string, dstVol, srcVol 
 	return
 }
 
-func (elf *ElFinderConnector) ping() {
+func (elf *Connector) ping() {
 
 }
 
-func (elf *ElFinderConnector) rename() {
+func (elf *Connector) rename() {
 	IDAndTarget := strings.Split(elf.req.Target, "_")
 	v := elf.getVolume(IDAndTarget[0])
 	path, err := elf.parseTarget(strings.Join(IDAndTarget[1:], "_"))
@@ -384,11 +366,11 @@ func (elf *ElFinderConnector) rename() {
 
 }
 
-func (elf *ElFinderConnector) resize() {
+func (elf *Connector) resize() {
 
 }
 
-func (elf *ElFinderConnector) rm() {
+func (elf *Connector) rm() {
 	removed := make([]string, 0, len(elf.req.Targets))
 	for _, target := range elf.req.Targets {
 		IDAndTarget := strings.Split(target, "_")
@@ -408,11 +390,11 @@ func (elf *ElFinderConnector) rm() {
 	elf.res.Removed = removed
 }
 
-func (elf *ElFinderConnector) search() {
+func (elf *Connector) search() {
 
 }
 
-func (elf *ElFinderConnector) size() {
+func (elf *Connector) size() {
 	var totalSize int64
 	for _, target := range elf.req.Targets {
 		IDAndTarget := strings.Split(target, "_")
@@ -437,7 +419,7 @@ func (elf *ElFinderConnector) size() {
 	elf.res.Size = totalSize
 }
 
-func (elf *ElFinderConnector) tree() {
+func (elf *Connector) tree() {
 	var ret = ElfResponse{Tree: []FileDir{}}
 	IDAndTarget := strings.Split(elf.req.Target, "_")
 	v := elf.getVolume(IDAndTarget[0])
@@ -455,14 +437,14 @@ func (elf *ElFinderConnector) tree() {
 	elf.res = &ret
 }
 
-func (elf *ElFinderConnector) upload() (Volume, string) {
+func (elf *Connector) upload() (Volume, string) {
 	IDAndTarget := strings.Split(elf.req.Target, "_")
 	v := elf.getVolume(IDAndTarget[0])
 	path, _ := elf.parseTarget(strings.Join(IDAndTarget[1:], "_"))
 	return v, path
 }
 
-func (elf *ElFinderConnector) dispatch(rw http.ResponseWriter, req *http.Request) {
+func (elf *Connector) dispatch(rw http.ResponseWriter, req *http.Request) {
 
 	switch elf.req.Cmd {
 	case "open":
@@ -685,7 +667,7 @@ func (elf *ElFinderConnector) dispatch(rw http.ResponseWriter, req *http.Request
 	}
 }
 
-func (elf *ElFinderConnector) getVolume(vid string) Volume {
+func (elf *Connector) getVolume(vid string) Volume {
 	if vid == "" {
 		return elf.defaultV
 	}
@@ -697,7 +679,7 @@ func (elf *ElFinderConnector) getVolume(vid string) Volume {
 
 }
 
-func (elf *ElFinderConnector) parseTarget(target string) (path string, err error) {
+func (elf *Connector) parseTarget(target string) (path string, err error) {
 	if target == "" || target == "/" {
 		return "/", nil
 	}
@@ -708,7 +690,7 @@ func (elf *ElFinderConnector) parseTarget(target string) (path string, err error
 	return path, nil
 }
 
-func (elf *ElFinderConnector) zipdl() {
+func (elf *Connector) zipdl() {
 	var ret ElfResponse
 	var zipWriter *zip.Writer
 	var totalZipSize int64
